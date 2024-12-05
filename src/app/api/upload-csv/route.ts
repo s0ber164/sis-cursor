@@ -52,20 +52,37 @@ export async function POST(request: Request) {
     // Process records and remove backgrounds
     const processedRecords = await Promise.all(
       records.map(async (record) => {
-        // Process image through rembg
-        const processedImageUrl = await removeBackground(record.image_url);
-        
-        return {
-          name: record.name,
-          price: parseFloat(record.price),
-          image_url: processedImageUrl,
-          category: record.category,
-          subcategory: record.subcategory,
-          quantity: parseInt(record.quantity),
-          dimensions: record.dimensions,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
+        try {
+          // Process image through rembg
+          const processedImageUrl = await removeBackground(record.image_url);
+          
+          return {
+            name: record.name,
+            price: parseFloat(record.price),
+            image_url: processedImageUrl,
+            category: record.category,
+            subcategory: record.subcategory,
+            quantity: parseInt(record.quantity),
+            dimensions: record.dimensions,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        } catch (error) {
+          console.error(`Failed to process image for ${record.name}:`, error);
+          // Return record with original image URL if background removal fails
+          return {
+            name: record.name,
+            price: parseFloat(record.price),
+            image_url: record.image_url,
+            category: record.category,
+            subcategory: record.subcategory,
+            quantity: parseInt(record.quantity),
+            dimensions: record.dimensions,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            backgroundRemovalFailed: true
+          };
+        }
       })
     );
 

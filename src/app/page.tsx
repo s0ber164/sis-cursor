@@ -86,6 +86,7 @@ export default function Home() {
                 price={prop.price}
                 image_url={prop.image_url}
                 quantity={prop.quantity}
+                dimensions={prop.dimensions}
                 onAddToList={() => handleAddToList(prop._id)}
               />
             ))}

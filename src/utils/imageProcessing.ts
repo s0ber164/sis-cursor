@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { writeFile, unlink } from 'fs/promises';
+import { writeFile, unlink, stat } from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -19,13 +19,27 @@ export async function removeBackground(imageUrl: string): Promise<string> {
 
     // Process with rembg
     await new Promise((resolve, reject) => {
-      const process = spawn('rembg', ['i', inputPath, outputPath]);
+      const process = spawn('rembg', [
+        'i',
+        inputPath,
+        outputPath
+      ]);
       
+      process.stderr.on('data', (data) => {
+        console.error(`rembg error: ${data.toString()}`);
+      });
+
+      process.stdout.on('data', (data) => {
+        console.log(`rembg output: ${data.toString()}`);
+      });
+
       process.on('error', (err) => {
+        console.error('rembg process error:', err);
         reject(err);
       });
 
       process.on('close', (code) => {
+        console.log(`rembg process exited with code ${code}`);
         if (code === 0) {
           resolve(code);
         } else {
@@ -34,6 +48,12 @@ export async function removeBackground(imageUrl: string): Promise<string> {
       });
     });
 
+    // Verify the output file exists and has content
+    const stats = await stat(outputPath);
+    if (stats.size === 0) {
+      throw new Error('rembg produced an empty output file');
+    }
+
     // Clean up input file
     await unlink(inputPath);
 
@@ -41,6 +61,6 @@ export async function removeBackground(imageUrl: string): Promise<string> {
     return `/uploads/${outputFileName}`;
   } catch (error) {
     console.error('Error removing background:', error);
-    return imageUrl; // Return original URL if processing fails
+    throw error; // Re-throw the error instead of silently returning the original URL
   }
 } 
