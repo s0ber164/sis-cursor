@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { writeFile, unlink, stat } from 'fs/promises';
+import { writeFile, unlink } from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -13,54 +13,58 @@ export async function removeBackground(imageUrl: string): Promise<string> {
     
     // Download and save the image
     const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.statusText}`);
+    }
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     await writeFile(inputPath, buffer);
 
-    // Process with rembg
+    // Process with Python
+    const pythonProcess = spawn('python', ['-c', `
+from rembg import remove
+from PIL import Image
+
+input_path = '${inputPath.replace(/\\/g, '/')}'
+output_path = '${outputPath.replace(/\\/g, '/')}'
+
+try:
+    input_image = Image.open(input_path)
+    output_image = remove(input_image)
+    output_image.save(output_path)
+    print('Success')
+except Exception as e:
+    print(f'Error: {str(e)}')
+    exit(1)
+`]);
+
     await new Promise((resolve, reject) => {
-      const process = spawn('rembg', [
-        'i',
-        inputPath,
-        outputPath
-      ]);
+      let errorOutput = '';
       
-      process.stderr.on('data', (data) => {
-        console.error(`rembg error: ${data.toString()}`);
+      pythonProcess.stdout.on('data', (data) => {
+        console.log(`Python output: ${data}`);
       });
 
-      process.stdout.on('data', (data) => {
-        console.log(`rembg output: ${data.toString()}`);
+      pythonProcess.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+        console.error(`Python error: ${data}`);
       });
 
-      process.on('error', (err) => {
-        console.error('rembg process error:', err);
-        reject(err);
-      });
-
-      process.on('close', (code) => {
-        console.log(`rembg process exited with code ${code}`);
+      pythonProcess.on('close', (code) => {
         if (code === 0) {
-          resolve(code);
+          resolve(null);
         } else {
-          reject(new Error(`rembg process exited with code ${code}`));
+          reject(new Error(`Python process failed with code ${code}. Error: ${errorOutput}`));
         }
       });
     });
 
-    // Verify the output file exists and has content
-    const stats = await stat(outputPath);
-    if (stats.size === 0) {
-      throw new Error('rembg produced an empty output file');
-    }
-
     // Clean up input file
-    await unlink(inputPath);
+    await unlink(inputPath).catch(console.error);
 
-    // Return the path to the processed image
     return `/uploads/${outputFileName}`;
   } catch (error) {
-    console.error('Error removing background:', error);
-    throw error; // Re-throw the error instead of silently returning the original URL
+    console.error('Error in background removal:', error);
+    throw error;
   }
 } 
